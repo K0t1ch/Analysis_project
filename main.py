@@ -5,13 +5,20 @@ import matplotlib.pyplot as plt
 from scipy.stats import shapiro, zscore
 
 df = pd.read_csv('analysing_environmental_issues.csv', sep=',', decimal='.')
+
+# данные в столбце 'work_shift' заменены на ближайшие,
+# т.к. здесь наблюдается плавное измение данных, в рамках значений 1 и 2
 df['work_shift'] = df['work_shift'].ffill()
+
+# тип данных изменён на целочисленный
 df['work_shift'] = df['work_shift'].astype('int')
 
 sp_df = []
 index_old = 0
 df1 = ''
 
+# при помощи цикла происходит разбивение общего датафрейма на отдельные, с интервалом измерения в один час,
+# для более правильной обработки данных
 while index_old < 4398:
     for i in range(len(df) - 1):
         try:
@@ -21,11 +28,13 @@ while index_old < 4398:
                 df1 = ''
                 index_old = i + 1
 
+# производится обработка подразумеваемой ошибки при проверке интервала между данными
         except Exception:
-            print(f"{i} {df['DateTime'][i]}")
+            pass
 
 # ---------------------------------------------------------------------
 
+# создается категориальный столбец с уровнем выброса газа
 df['amount_input_danger_gas'] = df['stage_4_output_danger_gas'].apply(lambda x:
                                                                       'низкий' if x < 0.05 else 'средний'
                                                                       if 0.05 <= x < 0.16 else 'высокий' if x >= 0.16
@@ -34,7 +43,6 @@ df['amount_input_danger_gas'] = df['stage_4_output_danger_gas'].apply(lambda x:
 # ---------------------------------------------------------------------
 
 names = df.columns[1:-2]
-
 stages = [['stage_2_input_water_sum', 'stage_2_output_bottom_pressure', 'stage_2_output_bottom_temp',
            'stage_2_output_bottom_temp_hum_steam', 'stage_2_output_bottom_vacuum', 'stage_2_output_top_pressure',
            'stage_2_output_top_pressure_at_end', 'stage_2_output_top_temp', 'stage_2_output_top_vacuum'],
@@ -43,6 +51,7 @@ stages = [['stage_2_input_water_sum', 'stage_2_output_bottom_pressure', 'stage_2
           ['stage_4_input_overheated_steam', 'stage_4_input_polymer', 'stage_4_input_steam', 'stage_4_input_water',
            'stage_4_output_danger_gas', 'stage_4_output_dry_residue_avg', 'stage_4_output_product']]
 
+# для анализа значений производится построение 5-ти график по 5-ти первым таблицам соответственно
 for i in range(5):
     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 
@@ -52,24 +61,45 @@ for i in range(5):
     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
 
     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства до изменений день {i + 1}")
-
     plt.savefig(rf'graphics\before\before_changes_{i + 1}')
 
+# -----ОБРОБОТКА ВЫБРОСОВ И ЗАМЕНА ПРОПУСКОВ-----
 for dataf in sp_df:
     dataf = dataf.dropna()
-    if len(dataf) > 3:
+    if len(dataf) > 3:      # размер каждого датайфрейма из списка проверяется, чтобы определить уместность проверки
         for i in names:
             if i != 'amount_input_danger_gas':
+
+                # данные в категориальном столбце выбросов газа не изменяются,т.к. в тип данных в столбце - str,
+                # не подразумевающие выбросов
+
                 if i != 'stage_4_output_danger_gas':
+
+                    # аналогично данные в колличественном столбце не изменяются,
+                    # так как в данном столбце слишком много пропусков
+
+                    # чтобы метод Шапиро применялся корректно, происходит проверка диапазона данных, который показывает
+                    # одиниковы ли значения в столбце, т.к. при одинаковых данных тест может выдать неверное значение
                     if dataf[i].max() - dataf[i].min() > 0:
                         p_value = shapiro(dataf[i])[1]
 
                         if p_value >= 0.05:
+                            # если данные распределены нормально - пропуски заменяются средним значением,
+                            # так как подобные данные вполне могут отражать реальную структуру,
+                            # а также могут повлиять на последующий анализ
                             for j in range(len(df)):
                                 df.loc[j, i] = df[i].mean()
 
                         else:
+
+                            # в ином случае, при помощи Z-оценки, определяется степень выброса
+                            # чтобы избежать ошибки - программа работает с выбросами,
+                            # если хотя бы одно значение отклоняется от подразумеваемого для выброса
+                            # или супервыброса соответсвенно
+
                             if (abs(zscore(dataf[i])) >= 1.96).any():
+                                # для замены выбросов используеься интерквартильный размах с множителем 3
+
                                 Q1 = dataf[i].quantile(0.25)
                                 Q3 = dataf[i].quantile(0.75)
 
@@ -82,8 +112,12 @@ for dataf in sp_df:
                                         df.loc[j, i] = df[i].mean()
 
                                     df.loc[j, i] = df[i].median()
+                                    # пропущенные значения заменяются медианой,
+                                    # так как она менее восприимчива к выбросам
 
                             elif (abs(zscore(dataf[i])) >= 3.29).any():
+                                # для работы с аномалиями также используется интреквартильный размах, но с множителем 6
+
                                 Q1 = dataf[i].quantile(0.25)
                                 Q3 = dataf[i].quantile(0.75)
 
@@ -97,6 +131,9 @@ for dataf in sp_df:
 
                                     df.loc[j, i] = df[i].median()
 
+# чтобы определить измененные значения,
+# производится построение новых 5-ти графиков всё по тем же первым 5-ти датафреймам из списка
+
 for i in range(5):
     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 
@@ -106,7 +143,6 @@ for i in range(5):
     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
 
     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства после изменений день {i + 1}")
-
     plt.savefig(rf'graphics\after\after_changes_{i + 1}')
 
 print(df.info())
