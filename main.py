@@ -1,153 +1,108 @@
 import pandas as pd
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy.stats import shapiro, zscore
+import seaborn as sns
 
-df = pd.read_csv('analysing_environmental_issues.csv', sep=',', decimal='.')
+data = pd.read_csv("analysing_environmental_issues.csv")
 
-# данные в столбце 'work_shift' заменены на ближайшие,
-# т.к. здесь наблюдается плавное изменение данных, в рамках значений 1 и 2
-df['work_shift'] = df['work_shift'].ffill()
+# приводим данные к правильному виду
+data['DateTime'] = pd.to_datetime(data['DateTime'])
 
-# тип данных изменён на целочисленный
-df['work_shift'] = df['work_shift'].astype('int')
+data['X'] = range(1, len(data) + 1)  # добавляем дополнительную переменную для посторения графиков
 
-sp_df = []
-index_old = 0
-df1 = ''
+# фильтруем столбцы с колличественным типом данных, не включая 'stage_4_output_danger_gas'
+numeric_columns = data.select_dtypes(include=[np.number]).columns.to_list()
+numeric_columns.remove('stage_4_output_danger_gas')
 
-# при помощи цикла происходит разбиение общего датафрейма на отдельные, с интервалом измерения в один час,
-# для более правильной обработки данных
-while index_old < 4398:
-    for i in range(len(df) - 1):
-        try:
-            if int(df['DateTime'][i + 1].split()[1].split(':')[0]) - int(df['DateTime'][i].split()[1].split(':')[0]) != 1:
-                df1 = df[index_old:i + 1]
-                sp_df.append(df1)
-                df1 = ''
-                index_old = i + 1
+# построение графиков до изменения
+for column in numeric_columns:
+    f, ax = plt.subplots(1, 2, figsize=(11, 4))
+    plt.suptitle(column, fontsize=16, y=1.01)
 
-# производится обработка подразумеваемой ошибки при проверке интервала между данными
-        except Exception:
-            pass
+    ax[1].scatter(data['X'], data[column], label=column, color='blue')
 
-# ---------------------------------------------------------------------
+    sns.boxplot(data[column], ax=ax[0])
+    plt.savefig(fr'graphics\before\before_changes_{column}')
 
-# создается категориальный столбец с уровнем выброса газа
-df['amount_input_danger_gas'] = df['stage_4_output_danger_gas'].apply(lambda x:
-                                                                      'низкий' if x < 0.05 else 'средний'
-                                                                      if 0.05 <= x < 0.16 else 'высокий' if x >= 0.16
-                                                                      else x)
 
-# ---------------------------------------------------------------------
+# функция для определения верхних и нижних границ
+def calculate_boundaries(column, wight_up, wight_bottom):
+    Q1 = data[column].quantile(0.25)
+    Q3 = data[column].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - wight_bottom * IQR
+    upper_bound = Q3 + wight_up * IQR
+    return lower_bound, upper_bound
 
-names = df.columns[1:-2]
-stages = [['stage_2_input_water_sum', 'stage_2_output_bottom_pressure', 'stage_2_output_bottom_temp',
-           'stage_2_output_bottom_temp_hum_steam', 'stage_2_output_bottom_vacuum', 'stage_2_output_top_pressure',
-           'stage_2_output_top_pressure_at_end', 'stage_2_output_top_temp', 'stage_2_output_top_vacuum'],
-          ['stage_3_input_pressure', 'stage_3_input_soft_water', 'stage_3_input_steam',
-           'stage_3_output_temp_hum_steam', 'stage_3_output_temp_top'],
-          ['stage_4_input_overheated_steam', 'stage_4_input_polymer', 'stage_4_input_steam', 'stage_4_input_water',
-           'stage_4_output_danger_gas', 'stage_4_output_dry_residue_avg', 'stage_4_output_product']]
 
-# для анализа значений производится построение 5-ти график по 5-ти первым таблицам соответственно
-# for i in range(5):
-#     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-#
-#     sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
-#     sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
-#     sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
-#     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
-#
-#     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства до изменений день {i + 1}")
-#     plt.savefig(rf'graphics\before\before_changes_{i + 1}')
+# функция для обработки выбросов с заменой на значение границ
+def handle_outliers(column, wight_up, wight_bottom):
+    lower_bound, upper_bound = calculate_boundaries(column, wight_up, wight_bottom)
+    data[column] = np.where(data[column] < lower_bound, lower_bound, data[column])
+    data[column] = np.where(data[column] > upper_bound, upper_bound, data[column])
 
-# -----ОБРОБОТКА ВЫБРОСОВ И ЗАМЕНА ПРОПУСКОВ-----
-for dataf in sp_df:
-    dataf = dataf.dropna()
-    if len(dataf) > 3:      # размер каждого датайфрейма из списка проверяется, чтобы определить уместность проверки
-        for i in names:
-            if i != 'amount_input_danger_gas':
 
-                # данные в категориальном столбце выбросов газа не изменяются,т.к. в тип данных в столбце - str,
-                # не подразумевающие выбросов
+# функция для обработки выбросов с заменой на среднее значение
+def handle_outliers_mean(column, wight_up, wight_bottom):
+    lower_bound, upper_bound = calculate_boundaries(column, wight_up, wight_bottom)
+    data[column] = np.where(data[column] < lower_bound, data[column].mean(), data[column])
+    data[column] = np.where(data[column] > upper_bound, data[column].mean(), data[column])
 
-                if i != 'stage_4_output_danger_gas':
 
-                    # аналогично данные в колличественном столбце не изменяются,
-                    # так как в данном столбце слишком много пропусков
+# проверка и замена выбросов с помощью введённых выше функций
+for column in numeric_columns:
+    handle_outliers(column, 3, 3)
 
-                    # чтобы метод Шапиро применялся корректно, происходит проверка диапазона данных, который показывает
-                    # одиниковы ли значения в столбце, т.к. при одинаковых данных тест может выдать неверное значение
-                    if dataf[i].max() - dataf[i].min() > 0:
-                        p_value = shapiro(dataf[i])[1]
+# определяем столбцы и способ работы с ними
+inter15 = ['stage_1_output_konv_avd', "stage_2_output_bottom_pressure", 'stage_2_output_top_pressure_at_end',
+           "stage_2_output_top_vacuum",
+           'stage_3_input_pressure', "stage_4_input_steam", 'stage_4_output_product', 'stage_4_output_dry_residue_avg']
+inter15_UP = ['stage_2_output_top_temp', 'stage_3_output_temp_top']
+inter15_down = ['stage_2_output_bottom_temp', 'stage_2_output_top_pressure', 'stage_3_output_temp_hum_steam',
+                'stage_4_input_overheated_steam']
+inter20_down = ['stage_2_output_bottom_temp_hum_steam', 'stage_2_output_bottom_vacuum', 'stage_3_input_soft_water',
+                'stage_4_input_polymer']
 
-                        if p_value >= 0.05:
-                            # если данные распределены нормально - пропуски заменяются средним значением,
-                            # так как подобные данные вполне могут отражать реальную структуру,
-                            # а также могут повлиять на последующий анализ
-                            for j in range(len(df)):
-                                df.loc[j, i] = df[i].mean()
+# изменение с помощью интерквартильного размаха
+for column in numeric_columns:
+    handle_outliers(column, 3, 3)
 
-                        else:
+for column in inter15:
+    handle_outliers_mean(column, 1.5, 1.5)
 
-                            # в ином случае, при помощи Z-оценки, определяется степень выброса
-                            # чтобы избежать ошибки - программа работает с выбросами,
-                            # если хотя бы одно значение отклоняется от подразумеваемого для выброса
-                            # или супервыброса соответсвенно
+for column in inter15_UP:
+    handle_outliers_mean(column, 1.5, 3)
 
-                            if (abs(zscore(dataf[i])) >= 1.96).any():
-                                # для замены выбросов используеься интерквартильный размах с множителем 3
+for column in inter15_down:
+    handle_outliers_mean(column, 3, 1.5)
 
-                                Q1 = dataf[i].quantile(0.25)
-                                Q3 = dataf[i].quantile(0.75)
+for column in inter20_down:
+    handle_outliers(column, 2, 2)
 
-                                IQR = Q3 - Q1
-                                lower_bound = Q1 - 3 * IQR
-                                upper_bound = Q3 + 3 * IQR
+# изменение с помощью интерполяции
+# с лимитом замены нескольких значений подряд = 1
+for column in numeric_columns:
+    data[column] = data[column].interpolate(limit=1)
 
-                                for j in range(len(df)):
-                                    if df.loc[j, i] < lower_bound or df.loc[j, i] > upper_bound:
-                                        df.loc[j, i] = df[i].mean()
+data = data.dropna(subset=numeric_columns)
 
-                                    df.loc[j, i] = df[i].median()
-                                    # пропущенные значения заменяются медианой,
-                                    # так как она менее восприимчива к выбросам
+# построение графиков после изменения
+for column in numeric_columns:
+    f, ax = plt.subplots(1, 2, figsize=(11, 4))
+    plt.suptitle(column, fontsize=16, y=1.01)
 
-                            elif (abs(zscore(dataf[i])) >= 3.29).any():
-                                # для работы с аномалиями также используется интреквартильный размах, но с множителем 6
+    ax[1].scatter(data['X'], data[column], label=column, color='blue')
 
-                                Q1 = dataf[i].quantile(0.25)
-                                Q3 = dataf[i].quantile(0.75)
+    sns.boxplot(data[column], ax=ax[0])
+    plt.savefig(fr'graphics\after\after_changes_{column}')
 
-                                IQR = Q3 - Q1
-                                lower_bound = Q1 - 6 * IQR
-                                upper_bound = Q3 + 6 * IQR
+# заменяем значения в столбце 'work_shift' на целые
+data['work_shift'] = data['work_shift'].astype('int')
 
-                                for j in range(len(df)):
-                                    if df.loc[j, i] < lower_bound or df.loc[j, i] > upper_bound:
-                                        df.loc[j, i] = df[i].median()
+missing_data = data.isnull().sum()
+data = data.drop(columns='X')
 
-                                    df.loc[j, i] = df[i].median()
-
-# чтобы определить измененные значения,
-# производится построение новых 5-ти графиков всё по тем же первым 5-ти датафреймам из списка
-
-# for i in range(5):
-#     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-#
-#     sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
-#     sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
-#     sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
-#     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
-#
-#     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства после изменений день {i + 1}")
-#     plt.savefig(rf'graphics\after\after_changes_{i + 1}')
-
-print(df.info())
-
-# Сохранение обработанных данных в новый CSV-файл
-output_file = 'cleaned_data.csv'
-df.to_csv(output_file, index=False)
-print(f"Предобработанные данные успешно сохранены в файл: {output_file}")
+# для удобства создаём новый измененный файл
+data.to_csv('output.csv')
+# print(data)
+# print("Пропуски:\n", missing_data)
