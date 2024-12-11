@@ -7,7 +7,7 @@ from scipy.stats import shapiro, zscore
 df = pd.read_csv('analysing_environmental_issues.csv', sep=',', decimal='.')
 
 # данные в столбце 'work_shift' заменены на ближайшие,
-# т.к. здесь наблюдается плавное измение данных, в рамках значений 1 и 2
+# т.к. здесь наблюдается плавное изменение данных, в рамках значений 1 и 2
 df['work_shift'] = df['work_shift'].ffill()
 
 # тип данных изменён на целочисленный
@@ -17,7 +17,7 @@ sp_df = []
 index_old = 0
 df1 = ''
 
-# при помощи цикла происходит разбивение общего датафрейма на отдельные, с интервалом измерения в один час,
+# при помощи цикла происходит разбиение общего датафрейма на отдельные, с интервалом измерения в один час,
 # для более правильной обработки данных
 while index_old < 4398:
     for i in range(len(df) - 1):
@@ -52,16 +52,16 @@ stages = [['stage_2_input_water_sum', 'stage_2_output_bottom_pressure', 'stage_2
            'stage_4_output_danger_gas', 'stage_4_output_dry_residue_avg', 'stage_4_output_product']]
 
 # для анализа значений производится построение 5-ти график по 5-ти первым таблицам соответственно
-for i in range(5):
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-
-    sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
-    sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
-    sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
-    sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
-
-    fig.suptitle(f"Гистограмма и ящик с усами для стадий производства до изменений день {i + 1}")
-    plt.savefig(rf'graphics\before\before_changes_{i + 1}')
+# for i in range(5):
+#     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+#
+#     sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
+#     sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
+#     sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
+#     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
+#
+#     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства до изменений день {i + 1}")
+#     plt.savefig(rf'graphics\before\before_changes_{i + 1}')
 
 # -----ОБРОБОТКА ВЫБРОСОВ И ЗАМЕНА ПРОПУСКОВ-----
 for dataf in sp_df:
@@ -134,15 +134,20 @@ for dataf in sp_df:
 # чтобы определить измененные значения,
 # производится построение новых 5-ти графиков всё по тем же первым 5-ти датафреймам из списка
 
-for i in range(5):
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-
-    sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
-    sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
-    sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
-    sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
-
-    fig.suptitle(f"Гистограмма и ящик с усами для стадий производства после изменений день {i + 1}")
-    plt.savefig(rf'graphics\after\after_changes_{i + 1}')
+# for i in range(5):
+#     fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+#
+#     sns.histplot(data=sp_df[i][stages[0]], ax=axes[0][1], kde=False, bins=30).set(ylabel='', xlabel='stage_2')
+#     sns.histplot(data=sp_df[i][stages[1]], ax=axes[1][0], kde=False, bins=30).set(ylabel='', xlabel='stage_3')
+#     sns.histplot(data=sp_df[i][stages[2]], ax=axes[1][1], kde=False, bins=30).set(ylabel='', xlabel='stage_4')
+#     sns.boxplot(ax=axes[0][0], data=sp_df[i]['stage_1_output_konv_avd']).set(ylabel='', xlabel='stage_1')
+#
+#     fig.suptitle(f"Гистограмма и ящик с усами для стадий производства после изменений день {i + 1}")
+#     plt.savefig(rf'graphics\after\after_changes_{i + 1}')
 
 print(df.info())
+
+# Сохранение обработанных данных в новый CSV-файл
+output_file = 'cleaned_data.csv'
+df.to_csv(output_file, index=False)
+print(f"Предобработанные данные успешно сохранены в файл: {output_file}")
