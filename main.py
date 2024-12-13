@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 data = pd.read_csv("analysing_environmental_issues.csv")
+print(data['work_shift'])
 
 # приводим данные к правильному виду
 data['DateTime'] = pd.to_datetime(data['DateTime'])
@@ -102,7 +103,11 @@ data['work_shift'] = data['work_shift'].astype('int')
 missing_data = data.isnull().sum()
 data = data.drop(columns='X')
 
+data['amount_input_danger_gas'] = data['stage_4_output_danger_gas'].apply(lambda x:
+                                                                          'низкий' if x < 0.1 else 'средний'
+                                                                          if 0.1 <= x < 0.4 else 'высокий')
 # для удобства создаём новый измененный файл
 data.to_csv('output.csv')
-# print(data)
+
+print(data.info())
 # print("Пропуски:\n", missing_data)
